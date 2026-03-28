@@ -1,0 +1,22 @@
+{
+  "name": "ffi-benchmark",
+  "version": "1.0.0",
+  "description": "Benchmarking FFI call overhead: NAPI-RS (TypeScript → Rust) vs JNI (Java → Rust)",
+  "main": "dist/index.js",
+  "scripts": {
+    "build:napi": "cd native && cargo build --release && cp target/release/libnapi_test.dylib ../native/napi_test.node",
+    "build:ts": "tsc",
+    "build:jni": "bash scripts/build-jni.sh",
+    "build": "npm run build:napi && npm run build:ts && npm run build:jni",
+    "bench:napi": "node dist/index.js",
+    "bench:jni": "bash scripts/bench-jni.sh",
+    "bench": "npm run bench:napi && npm run bench:jni",
+    "test:rust": "cd native && cargo test && cd ../jni-bench/rust && cargo test",
+    "test": "npm run test:rust && npm run build && npm run bench"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.5.3"
+  },
+  "private": true
+}
