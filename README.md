@@ -61,25 +61,39 @@ npm run bench     # runs both benchmarks
 └── tsconfig.json
 ```
 
-## Sample Results (Apple Silicon, 1M iterations)
+## Benchmark Results
 
-```
-NAPI-RS (TypeScript → Rust)           JNI (Java → Rust)
-─────────────────────────────         ─────────────────────────────
-add(2, 3)           17 ns/call        add(2, 3)            5 ns/call
-fibonacci(50)       38 ns/call        fibonacci(50)       35 ns/call
-reverse_string(1K)  1,381 ns/call     reverse_string(1K)  2,873 ns/call
-sum_array(100)      2,716 ns/call     sum_array(100)      173 ns/call
-```
+Apple Silicon, OpenJDK 21, Node 24, Rust 1.93 (release + LTO), 1M iterations per test.
 
-### Raw FFI call overhead (primitives only)
+### Per-call latency (nanoseconds)
 
-| | Per-call overhead |
-|---|---|
-| **JNI** | ~3 ns |
-| **NAPI** | ~17 ns |
+| Method | Pure Java | Pure JS | Java→Rust (JNI) | TS→Rust (NAPI) |
+|---|---:|---:|---:|---:|
+| `add(2, 3)` | 1.4 | 3.8 | 5.3 | 18.1 |
+| `fibonacci(50)` | 1.5 | 13.4 | 33.2 | 37.4 |
+| `reverse_string(1K)` | 188.3 | 7,400.4 | 2,811.8 | 1,355.9 |
+| `sum_array(100)` | 1.2 | 53.9 | 169.4 | 2,647.9 |
 
-Both are negligible for real workloads. The marshalling cost (strings, arrays) is what matters in practice.
+### FFI overhead (call cost minus native equivalent)
+
+| Method | JNI overhead | NAPI overhead |
+|---|---:|---:|
+| `add(2, 3)` | 2.7 ns | 16.8 ns |
+| `fibonacci(50)` | 22.5 ns | 22.3 ns |
+| `reverse_string(1K)` | 2,518 ns | -5,900 ns (Rust faster than JS) |
+| `sum_array(100)` | 169 ns | 2,570 ns |
+
+### Observations
+
+**Raw call overhead:** JNI ~3 ns, NAPI ~17 ns. Both negligible for real workloads.
+
+**Compute (fibonacci):** Both FFI boundaries add ~22 ns of overhead. The Rust computation dominates at that point, making the boundary cost identical.
+
+**String marshalling:** NAPI wins — Rust reverses a 1K string in 1,356 ns vs JavaScript's 7,400 ns. JNI tells the opposite story: 15x slower than pure Java (2,812 ns vs 188 ns). Java's `StringBuilder.reverse()` operates in-place on a contiguous `char[]`, while JNI pays for two UTF-16 ↔ UTF-8 encoding conversions and two allocations per call. The Rust computation itself is fast — it's the round-trip string marshalling that kills it.
+
+**Array handling:** JNI copies the entire `double[]` buffer in one shot (169 ns). NAPI extracts each element individually through V8's API (2,648 ns).
+
+**Bottom line:** FFI tax only matters when the function does less work than the crossing costs. For any meaningful computation, both are fine.
 
 ## License
 
